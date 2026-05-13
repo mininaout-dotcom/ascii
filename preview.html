@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>ASCII Video Export</title>
+
+<style>
+
+html,
+body {
+
+    margin: 0;
+    background: black;
+    overflow: hidden;
+    font-family: monospace;
+
+}
+
+canvas {
+
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    image-rendering: pixelated;
+
+}
+
+#ui {
+
+    position: fixed;
+
+    top: 20px;
+    left: 20px;
+
+    z-index: 100;
+
+    width: 320px;
+
+    background: rgba(0,0,0,.92);
+
+    border: 1px solid #333;
+
+    border-radius: 14px;
+
+    padding: 16px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+
+    color: white;
+
+}
+
+input,
+button,
+select {
+
+    width: 100%;
+
+    background: #111;
+    color: white;
+
+    border: 1px solid #444;
+
+    border-radius: 8px;
+
+    padding: 10px;
+
+    box-sizing: border-box;
+}
+
+button {
+    cursor: pointer;
+}
+
+button:hover {
+    background: #222;
+}
+
+label {
+
+    font-size: 12px;
+    opacity: .7;
+
+}
+
+.status {
+
+    font-size: 12px;
+    opacity: .7;
+
+}
+
+</style>
+</head>
+<body>
+
+<div id="ui">
+
+    <input
+        type="file"
+        id="videoUpload"
+        accept="video/*"
+    >
+
+    <div>
+
+        <label>
+            ASCII Symbols
+        </label>
+
+        <input
+            type="text"
+            id="chars"
+            value=" .:-=+*#%@"
+        >
+
+    </div>
+
+    <div>
+
+        <label>
+            Cell Size
+        </label>
+
+        <input
+            type="range"
+            id="cellSize"
+            min="4"
+            max="24"
+            value="8"
+        >
+
+    </div>
+
+    <div>
+
+        <label>
+            Contrast
+        </label>
+
+        <input
+            type="range"
+            id="contrast"
+            min="1"
+            max="5"
+            step="0.1"
+            value="2"
+        >
+
+    </div>
+
+    <div>
+
+        <label>
+            Render Mode
+        </label>
+
+        <select id="mode">
+
+            <option value="bw">
+                Black / White
+            </option>
+
+            <option value="color">
+                Color
+            </option>
+
+        </select>
+
+    </div>
+
+    <button id="exportBtn">
+        Export Video
+    </button>
+
+    <div
+        class="status"
+        id="status"
+    >
+        idle
+    </div>
+
+</div>
+
+<video
+    id="video"
+    style="display:none"
+    crossorigin="anonymous"
+    loop
+    muted
+    playsinline
+></video>
+
+<canvas id="canvas"></canvas>
+
+<script>
+
+const canvas =
+    document.getElementById('canvas');
+
+const ctx =
+    canvas.getContext('2d');
+
+const video =
+    document.getElementById('video');
+
+const upload =
+    document.getElementById('videoUpload');
+
+const charsInput =
+    document.getElementById('chars');
+
+const cellSlider =
+    document.getElementById('cellSize');
+
+const contrastSlider =
+    document.getElementById('contrast');
+
+const modeSelect =
+    document.getElementById('mode');
+
+const exportBtn =
+    document.getElementById('exportBtn');
+
+const statusText =
+    document.getElementById('status');
+
+canvas.width = 1920;
+canvas.height = 1080;
+
+let animationId;
+
+function brightness(r,g,b){
+
+    return (
+        0.299 * r +
+        0.587 * g +
+        0.114 * b
+    ) / 255;
+
+}
+
+upload.addEventListener(
+    'change',
+    e => {
+
+        const file =
+            e.target.files[0];
+
+        if(!file) return;
+
+        video.src =
+            URL.createObjectURL(file);
+
+        video.onloadeddata = () => {
+
+            video.play();
+
+            render();
+
+        };
+    }
+);
+
+function render(){
+
+    const cellSize =
+        parseInt(cellSlider.value);
+
+    const contrast =
+        parseFloat(
+            contrastSlider.value
+        );
+
+    const chars =
+        charsInput.value;
+
+    if(!video.paused){
+
+        ctx.drawImage(
+            video,
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        const frame =
+            ctx.getImageData(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+        const data =
+            frame.data;
+
+        ctx.fillStyle = "black";
+
+        ctx.fillRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+        ctx.font =
+            `${cellSize}px monospace`;
+
+        ctx.textBaseline =
+            "top";
+
+        for(
+            let y = 0;
+            y < canvas.height;
+            y += cellSize
+        ){
+
+            for(
+                let x = 0;
+                x < canvas.width;
+                x += cellSize
+            ){
+
+                const i =
+                    (
+                        y *
+                        canvas.width +
+                        x
+                    ) * 4;
+
+                const r = data[i];
+                const g = data[i+1];
+                const b = data[i+2];
+
+                let lum =
+                    brightness(r,g,b);
+
+                lum =
+                    Math.pow(
+                        lum,
+                        contrast
+                    );
+
+                const index =
+                    Math.floor(
+                        lum *
+                        (
+                            chars.length - 1
+                        )
+                    );
+
+                const char =
+                    chars[index];
+
+                if(
+                    modeSelect.value === 'bw'
+                ){
+
+                    const white =
+                        Math.floor(
+                            lum * 255
+                        );
+
+                    ctx.fillStyle =
+                        `rgb(
+                            ${white},
+                            ${white},
+                            ${white}
+                        )`;
+
+                } else {
+
+                    ctx.fillStyle =
+                        `rgb(
+                            ${r},
+                            ${g},
+                            ${b}
+                        )`;
+
+                }
+
+                ctx.fillText(
+                    char,
+                    x,
+                    y
+                );
+            }
+        }
+    }
+
+    animationId =
+        requestAnimationFrame(
+            render
+        );
+}
+
+exportBtn.onclick =
+async () => {
+
+    if(!video.src) return;
+
+    statusText.innerText =
+        'recording...';
+
+    const stream =
+        canvas.captureStream(30);
+
+    let mimeType = '';
+
+    const mimeTypes = [
+
+        'video/webm;codecs=vp8',
+        'video/webm'
+
+    ];
+
+    for(
+        const type of mimeTypes
+    ){
+
+        if(
+            MediaRecorder
+            .isTypeSupported(type)
+        ){
+
+            mimeType = type;
+
+            break;
+
+        }
+    }
+
+    const recorder =
+        new MediaRecorder(
+            stream,
+            {
+                mimeType,
+                videoBitsPerSecond:
+                    12000000
+            }
+        );
+
+    const chunks = [];
+
+    recorder.ondataavailable =
+        e => {
+
+            if(e.data.size > 0){
+
+                chunks.push(e.data);
+
+            }
+        };
+
+    recorder.start();
+
+    video.currentTime = 0;
+
+    video.play();
+
+    setTimeout(() => {
+
+        recorder.stop();
+
+    }, video.duration * 1000);
+
+    recorder.onstop = () => {
+
+        const blob =
+            new Blob(
+                chunks,
+                {
+                    type: mimeType
+                }
+            );
+
+        const url =
+            URL.createObjectURL(
+                blob
+            );
+
+        const a =
+            document.createElement(
+                'a'
+            );
+
+        a.href = url;
+
+        a.download =
+            'ascii-video.webm';
+
+        a.click();
+
+        statusText.innerText =
+            'done';
+
+    };
+};
+
+</script>
+
+</body>
+</html>
