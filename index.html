@@ -38,6 +38,9 @@ canvas {
 
     width: 320px;
 
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+
     background: rgba(0,0,0,.92);
 
     border: 1px solid #333;
@@ -159,6 +162,15 @@ input[type="range"]::-moz-range-thumb {
     cursor: pointer;
 }
 
+input[type="color"] {
+
+    height: 36px;
+    padding: 2px;
+
+    cursor: pointer;
+
+}
+
 button {
     cursor: pointer;
 }
@@ -218,6 +230,34 @@ label {
     background: white;
 
     transform: translateX(-50%);
+
+}
+
+.color-row {
+
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+
+}
+
+.color-row > div {
+
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+
+}
+
+.swap-btn {
+
+    width: auto;
+
+    padding: 6px 10px;
+
+    font-size: 11px;
+
+    opacity: .8;
 
 }
 
@@ -378,14 +418,56 @@ label {
         <select id="mode">
 
             <option value="bw">
-                Black / White
+                Monochrome
+            </option>
+
+            <option value="tinted">
+                Tinted (uses glyph color)
             </option>
 
             <option value="color">
-                Color
+                Source Color
             </option>
 
         </select>
+
+    </div>
+
+    <div>
+
+        <label>
+            Palette
+        </label>
+
+        <div class="color-row">
+
+            <div>
+                <label>Background</label>
+                <input
+                    type="color"
+                    id="bgColor"
+                    value="#000000"
+                >
+            </div>
+
+            <div>
+                <label>Glyphs</label>
+                <input
+                    type="color"
+                    id="fgColor"
+                    value="#ffffff"
+                >
+            </div>
+
+        </div>
+
+        <button
+            id="swapColors"
+            class="swap-btn"
+            style="margin-top:6px"
+        >
+            ⇄ swap colors
+        </button>
 
     </div>
 
@@ -416,7 +498,6 @@ label {
 <video
     id="video"
     style="display:none"
-    crossorigin="anonymous"
     loop
     muted
     playsinline
@@ -464,6 +545,15 @@ const contrastHistoryEl =
 const modeSelect =
     document.getElementById('mode');
 
+const bgColorEl =
+    document.getElementById('bgColor');
+
+const fgColorEl =
+    document.getElementById('fgColor');
+
+const swapColorsBtn =
+    document.getElementById('swapColors');
+
 const exportBtn =
     document.getElementById('exportBtn');
 
@@ -483,6 +573,16 @@ function brightness(r,g,b){
         0.114 * b
     ) / 255;
 
+}
+
+function hexToRgb(hex){
+
+    const v = hex.replace('#','');
+    return [
+        parseInt(v.substring(0,2), 16),
+        parseInt(v.substring(2,4), 16),
+        parseInt(v.substring(4,6), 16),
+    ];
 }
 
 /* ──────────────── Slider value display + memory markers ──────────────── */
@@ -523,7 +623,6 @@ function setupSlider(
 
             m.style.left = pct + '%';
 
-            // newer markers brighter, older fade
             const age =
                 history.length - idx;
 
@@ -567,7 +666,6 @@ function setupSlider(
         pushHistory
     );
 
-    // seed initial value as first marker
     updateValueLabel();
     pushHistory();
 
@@ -587,9 +685,31 @@ setupSlider(
     v => parseFloat(v).toFixed(1)
 );
 
+/* ──────────────── Color swap ──────────────── */
+
+swapColorsBtn.addEventListener(
+    'click',
+    () => {
+
+        const a = bgColorEl.value;
+        bgColorEl.value = fgColorEl.value;
+        fgColorEl.value = a;
+
+    }
+);
+
 /* ──────────────── Video source handling ──────────────── */
 
-function loadVideoFromUrl(url){
+function loadVideoFromUrl(url, isLocal){
+
+    if(isLocal){
+        video.removeAttribute('crossorigin');
+    } else {
+        video.setAttribute(
+            'crossorigin',
+            'anonymous'
+        );
+    }
 
     video.src = url;
 
@@ -599,12 +719,17 @@ function loadVideoFromUrl(url){
 
         video.play().catch(()=>{
             statusText.innerText =
-                'tap canvas to start';
+                'click canvas to play';
         });
 
         cancelAnimationFrame(animationId);
         render();
 
+    };
+
+    video.onerror = () => {
+        statusText.innerText =
+            'failed to load video';
     };
 
 }
@@ -618,32 +743,16 @@ upload.addEventListener(
 
         if(!file) return;
 
-        // For user-uploaded local files we don't need CORS
-        video.removeAttribute('crossorigin');
-
         loadVideoFromUrl(
-            URL.createObjectURL(file)
+            URL.createObjectURL(file),
+            true
         );
     }
 );
 
-// Preload a sample so the effect is visible right away.
-// Google's gtv sample bucket serves CORS headers so the
-// canvas stays untainted and export keeps working.
-const SAMPLE_URL =
-    'https://commondatastorage.googleapis.com/' +
-    'gtv-videos-bucket/sample/' +
-    'ForBiggerBlazes.mp4';
+// Local sample sitting next to index.html.
+loadVideoFromUrl('./sample.mp4', true);
 
-video.setAttribute(
-    'crossorigin',
-    'anonymous'
-);
-
-loadVideoFromUrl(SAMPLE_URL);
-
-// Click anywhere on canvas to (re)start playback —
-// helps when browser autoplay policy blocks the first play.
 canvas.addEventListener(
     'click',
     () => {
@@ -666,7 +775,15 @@ function renderASCII(){
         );
 
     const chars =
-        charsInput.value;
+        charsInput.value || ' .:-=+*#%@';
+
+    const mode = modeSelect.value;
+
+    const [bgR, bgG, bgB] =
+        hexToRgb(bgColorEl.value);
+
+    const [fgR, fgG, fgB] =
+        hexToRgb(fgColorEl.value);
 
     ctx.drawImage(
         video,
@@ -687,7 +804,7 @@ function renderASCII(){
     const data =
         frame.data;
 
-    ctx.fillStyle = "black";
+    ctx.fillStyle = bgColorEl.value;
 
     ctx.fillRect(
         0,
@@ -699,8 +816,7 @@ function renderASCII(){
     ctx.font =
         `${cellSize}px monospace`;
 
-    ctx.textBaseline =
-        "top";
+    ctx.textBaseline = "top";
 
     for(
         let y = 0;
@@ -737,46 +853,53 @@ function renderASCII(){
             const index =
                 Math.floor(
                     lum *
-                    (
-                        chars.length - 1
-                    )
+                    (chars.length - 1)
                 );
 
-            const char =
-                chars[index];
+            const char = chars[index];
 
-            if(
-                modeSelect.value === 'bw'
-            ){
+            if(mode === 'bw'){
 
-                const white =
-                    Math.floor(
-                        lum * 255
+                // Glyph color mixes from BG → FG by luminance
+                const rr =
+                    Math.round(
+                        bgR + (fgR - bgR) * lum
+                    );
+                const gg =
+                    Math.round(
+                        bgG + (fgG - bgG) * lum
+                    );
+                const bb =
+                    Math.round(
+                        bgB + (fgB - bgB) * lum
                     );
 
                 ctx.fillStyle =
-                    `rgb(
-                        ${white},
-                        ${white},
-                        ${white}
-                    )`;
+                    `rgb(${rr},${gg},${bb})`;
+
+            } else if(mode === 'tinted'){
+
+                // Full FG color, dimmed by luminance
+                const rr =
+                    Math.round(fgR * lum);
+                const gg =
+                    Math.round(fgG * lum);
+                const bb =
+                    Math.round(fgB * lum);
+
+                ctx.fillStyle =
+                    `rgb(${rr},${gg},${bb})`;
 
             } else {
 
+                // Source color from video pixel
                 ctx.fillStyle =
-                    `rgb(
-                        ${r},
-                        ${g},
-                        ${b}
-                    )`;
+                    `rgb(${r},${g},${b})`;
 
             }
 
-            ctx.fillText(
-                char,
-                x,
-                y
-            );
+            ctx.fillText(char, x, y);
+
         }
     }
 }
@@ -788,9 +911,7 @@ function render(){
     }
 
     animationId =
-        requestAnimationFrame(
-            render
-        );
+        requestAnimationFrame(render);
 }
 
 function seekVideo(t){
@@ -815,7 +936,7 @@ function seekVideo(t){
     });
 }
 
-/* ──────────────── MP4 export (WebCodecs + mp4-muxer) ──────────────── */
+/* ──────────────── MP4 export ──────────────── */
 
 exportBtn.onclick =
 async () => {
@@ -842,7 +963,6 @@ async () => {
 
     statusText.innerText = 'preparing...';
 
-    // H.264 High Profile, Level 4.0 — fits 1080p30
     const codec = 'avc1.640028';
 
     let supported = false;
@@ -883,12 +1003,8 @@ async () => {
     const encoder =
         new VideoEncoder({
             output: (chunk, meta) =>
-                muxer.addVideoChunk(
-                    chunk,
-                    meta
-                ),
-            error: e =>
-                console.error(e),
+                muxer.addVideoChunk(chunk, meta),
+            error: e => console.error(e),
         });
 
     encoder.configure({
@@ -905,11 +1021,8 @@ async () => {
 
     await seekVideo(0);
 
-    for(
-        let i = 0;
-        i < totalFrames;
-        i++
-    ){
+    for(let i = 0; i < totalFrames; i++){
+
         const t = i / fps;
 
         await seekVideo(t);
@@ -919,13 +1032,9 @@ async () => {
         const frame =
             new VideoFrame(canvas, {
                 timestamp:
-                    Math.round(
-                        t * 1_000_000
-                    ),
+                    Math.round(t * 1_000_000),
                 duration:
-                    Math.round(
-                        1_000_000 / fps
-                    ),
+                    Math.round(1_000_000 / fps),
             });
 
         encoder.encode(
@@ -935,9 +1044,7 @@ async () => {
 
         frame.close();
 
-        while(
-            encoder.encodeQueueSize > 8
-        ){
+        while(encoder.encodeQueueSize > 8){
             await new Promise(r =>
                 setTimeout(r, 0)
             );
